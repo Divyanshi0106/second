@@ -6,26 +6,50 @@ import os
 import base64
 import pickle
 
-# Molecular descriptor calculator
+
+
 def desc_calc():
-    # Performs the descriptor calculation
-    bashCommand = "java -Xms2G -Xmx2G -Djava.awt.headless=true -jar ./PaDEL-Descriptor/PaDEL-Descriptor.jar -removesalt -standardizenitro -fingerprints -descriptortypes ./PaDEL-Descriptor/PubchemFingerprinter.xml -dir ./ -file descriptors_output.csv"
+    """
+    Calculates molecular descriptors using the PaDEL-Descriptor tool.
+    This function runs a Java command-line program and removes the input file after processing.
+    """
+    # Command to run the PaDEL-Descriptor tool
+    bashCommand = "java -Xms2G -Xmx2G ..."
+
+    # Run the command and capture output/errors
     process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
     output, error = process.communicate()
+
+    # Clean up the input file
     os.remove('molecule.smi')
 
-# File download
-def filedownload(df):
-    csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()  # strings <-> bytes conversions
-    href = f'<a href="data:file/csv;base64,{b64}" download="prediction.csv">Download Predictions</a>'
-    return href
 
-# Model building
+
+def filedownload(df):
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="Download Predictions",
+        data=csv,
+        file_name="prediction.csv",
+        mime="text/csv",
+    )
+
+
+# Configuration for file paths
+MODEL_PATH = 'acetylcholinesterase_model.pkl'
+DESCRIPTOR_LIST_PATH = 'descriptor_list.csv'
+DESCRIPTORS_OUTPUT_PATH = 'descriptors_output.csv'
+
 def build_model(input_data):
-    # Reads in saved regression model
-    load_model = pickle.load(open('acetylcholinesterase_model.pkl', 'rb'))
-    # Apply model to make predictions
+    # Load the model using the configured path
+    try:
+        with open(MODEL_PATH, 'rb') as model_file:
+            load_model = pickle.load(model_file)
+    except FileNotFoundError:
+        st.error(f"Model file not found at {MODEL_PATH}. Please ensure the file is available.")
+        return
+
+    # Make predictions and display results
     prediction = load_model.predict(input_data)
     st.header('**Prediction output**')
     prediction_output = pd.Series(prediction, name='pIC50')
@@ -33,6 +57,8 @@ def build_model(input_data):
     df = pd.concat([molecule_name, prediction_output], axis=1)
     st.write(df)
     st.markdown(filedownload(df), unsafe_allow_html=True)
+
+
 
 # Logo image
 image = Image.open('loogo.png')
@@ -46,6 +72,9 @@ st.markdown("""
 This app allows you to predict the bioactivity towards inhibting the `Acetylcholinesterase` enzyme. `Acetylcholinesterase` is a drug target for Alzheimer's disease.
 """)
 
+
+
+
 # Sidebar
 with st.sidebar.header('1. Upload your CSV data'):
     uploaded_file = st.sidebar.file_uploader("Upload your input file", type=['txt'])
@@ -53,30 +82,60 @@ with st.sidebar.header('1. Upload your CSV data'):
 [Example input file](https://raw.githubusercontent.com/dataprofessor/bioactivity-prediction-app/main/example_acetylcholinesterase.txt)
 """)
 
+def check_dependencies():
+    # Check if Java is available
+    if subprocess.call(["java", "-version"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL) != 0:
+        st.error("Java is not installed or not available in PATH.")
+        st.stop()
+
+    # Check if PaDEL-Descriptor JAR file exists
+    if not os.path.exists('./PaDEL-Descriptor/PaDEL-Descriptor.jar'):
+        st.error("PaDEL-Descriptor JAR file not found. Please ensure it is in the correct location.")
+        st.stop()
+
+    # Check if model file exists
+    if not os.path.exists('acetylcholinesterase_model.pkl'):
+        st.error("Model file not found. Please ensure it is in the correct location.")
+        st.stop()
+
+# Call the dependency check function at the start of the script
+check_dependencies()
+
+
 if st.sidebar.button('Predict'):
-    load_data = pd.read_table(uploaded_file, sep=' ', header=None)
-    load_data.to_csv('molecule.smi', sep = '\t', header = False, index = False)
+    if uploaded_file is not None:
+        try:
+            # Validate and read the uploaded file
+            load_data = pd.read_table(uploaded_file, sep=' ', header=None)
+            if load_data.empty:
+                st.error("Uploaded file is empty. Please upload a valid input file.")
+                st.stop()
+            
+            # Save the input data for descriptor calculation
+            load_data.to_csv('molecule.smi', sep='\t', header=False, index=False)
 
-    st.header('**Original input data**')
-    st.write(load_data)
+            st.header('**Original input data**')
+            st.write(load_data)
 
-    with st.spinner("Calculating descriptors..."):
-        desc_calc()
+            with st.spinner("Calculating descriptors..."):
+                desc_calc()
 
-    # Read in calculated descriptors and display the dataframe
-    st.header('**Calculated molecular descriptors**')
-    desc = pd.read_csv('descriptors_output.csv')
-    st.write(desc)
-    st.write(desc.shape)
+            # Read and display calculated descriptors
+            st.header('**Calculated molecular descriptors**')
+            desc = pd.read_csv('descriptors_output.csv')
+            st.write(desc)
+            st.write(desc.shape)
 
-    # Read descriptor list used in previously built model
-    st.header('**Subset of descriptors from previously built models**')
-    Xlist = list(pd.read_csv('descriptor_list.csv').columns)
-    desc_subset = desc[Xlist]
-    st.write(desc_subset)
-    st.write(desc_subset.shape)
+            # Subset descriptors for prediction
+            st.header('**Subset of descriptors from previously built models**')
+            Xlist = list(pd.read_csv('descriptor_list.csv').columns)
+            desc_subset = desc[Xlist]
+            st.write(desc_subset)
+            st.write(desc_subset.shape)
 
-    # Apply trained model to make prediction on query compounds
-    build_model(desc_subset)
-else:
-    st.info('Upload input data in the sidebar to start!')
+            # Apply trained model
+            build_model(desc_subset)
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
+    else:
+        st.warning("Please upload a file to proceed.")
