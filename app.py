@@ -35,7 +35,7 @@ def build_model(input_data):
     st.markdown(filedownload(df), unsafe_allow_html=True)
 
 # Logo image
-image = Image.open('logoo.png')
+image = Image.open('loogo.png')
 
 st.image(image, use_container_width=True)
 
