@@ -5,6 +5,8 @@ import pickle
 from rdkit import Chem
 from rdkit.Chem import Descriptors
 import numpy as np
+from rdkit import Chem
+
 
 # Load logo
 image = Image.open('loogo.png')
