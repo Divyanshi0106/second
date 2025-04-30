@@ -6,6 +6,24 @@ import os
 import base64
 import pickle
 
+from rdkit import Chem
+from rdkit.Chem import Descriptors, AllChem
+import numpy as np
+
+def desc_calc_rdkit(smiles_list):
+    desc_names = [desc[0] for desc in Descriptors._descList]
+    data = []
+
+    for smi in smiles_list:
+        mol = Chem.MolFromSmiles(smi)
+        if mol is None:
+            data.append([np.nan] * len(desc_names))  # Handle invalid SMILES
+            continue
+        descriptors = [desc(mol) for _, desc in Descriptors._descList]
+        data.append(descriptors)
+
+    df = pd.DataFrame(data, columns=desc_names)
+    return df
 
 
 def desc_calc():
